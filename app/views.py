@@ -10,6 +10,7 @@ from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from forms import LoginForm
 from models import UserProfile
+import os
 
 
 ###
@@ -28,24 +29,56 @@ def about():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # If the user is already logged in then it will just return them to the 
+    # secure page instead of logging them in again
+    if (current_user.is_authenticated):
+        return redirect(url_for('secure_page'))
+    
     form = LoginForm()
-    if request.method == "POST":
+    if request.method == "POST" and form.validate_on_submit():
         # change this to actually validate the entire form submission
         # and not just one field
-        if form.username.data:
+        if form.username.data and form.password.data:
             # Get the username and password values from the form.
-
+            username = form.username.data
+            password = form.password.data
+            
             # using your model, query database for a user based on the username
             # and password submitted
             # store the result of that query to a `user` variable so it can be
             # passed to the login_user() method.
-
+            user = UserProfile.query.filter_by(username=username, password=password).first()
             # get user id, load into session
-            login_user(user)
-
-            # remember to flash a message to the user
-            return redirect(url_for("home")) # they should be redirected to a secure-page route instead
+            if user is not None:
+                login_user(user)
+                flash('Logged in successfully.', 'success')
+                next = request.args.get('next')
+                return redirect(url_for('secure_page'))
+            else:
+                flash('Username or Password is incorrect.', 'danger')
+                
     return render_template("login.html", form=form)
+
+@app.route("/secure-page")
+@login_required
+def secure_page():
+    return render_template('securepage.html', uploads=get_uploads())
+
+def get_uploads():
+    uploads = []
+    for subdir, dirs, files in os.walk(app.config['UPLOAD_FOLDER']):
+        for file in files:
+            if not file.startswith('.'): #ignores hidden files on linux
+                uploads.append(file)
+    return uploads
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash('Logged out successfully.', 'success')
+    return redirect(url_for('home'))
+
 
 # user_loader callback. This callback is used to reload the user object from
 # the user ID stored in the session
